@@ -153,15 +153,22 @@ def get_username():
     return pwd.getpwuid(os.getuid()).pw_name
 
 def request_unlock(app):
+    if getattr(app, "unlocking", False):
+        return False
+
+    app.unlocking = True
+    
     if hasattr(app, "fprint") and app.fprint:
         app.fprint.cleanup()
     
-    for window in app.get_windows():
+    for window in list(app.get_windows()):
         window.close()
 
     app.quit()
 
 def on_activate(app):
+    app.unlocking = False
+
     display = Gdk.Display.get_default()
     monitors = display.get_monitors()
     
