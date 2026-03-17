@@ -165,6 +165,7 @@ def request_unlock(app):
         window.close()
 
     app.quit()
+    return False
 
 def on_activate(app):
     app.unlocking = False
