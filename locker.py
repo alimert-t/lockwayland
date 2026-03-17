@@ -44,6 +44,8 @@ class LockScreen(Gtk.ApplicationWindow):
         super().__init__(*args, **kwargs)
         self.username = pwd.getpwuid(os.getuid()).pw_name
 
+        self.auth_in_progress = False
+
         # Layer shell must be called before window is realized
         Gtk4LayerShell.init_for_window(self)
         Gtk4LayerShell.set_monitor(self, monitor)
@@ -80,13 +82,22 @@ class LockScreen(Gtk.ApplicationWindow):
     def update_clock(self):
         now = datetime.datetime.now().strftime("%H:%M")
         # todo: make this customizeble via config
-        self.label_clock.set_markup(f"<span size='60000' weight='bold' color='white'>{now}</span>")
+        self.label_clock.set_markup(
+                f"<span size='60000' weight='bold' color='white'>{now}</span>")
         return True
 
     def on_pass_submit(self, entry):
+        if self.auth_in_progress:
+            return
+
+        self.auth_in_progress = True
         password = entry.get_text()
         entry.set_sensitive(False)
-        threading.Thread(target=self.check_pam, args=(password,), daemon=True).start()
+        threading.Thread(
+                target=self.check_pam,
+                args=(password,),
+                daemon=True,
+                ).start()
     
     def check_pam(self, password):
         if pam.pam().authenticate(self.username, password, service="lockwayland"):
@@ -95,6 +106,7 @@ class LockScreen(Gtk.ApplicationWindow):
             GLib.idle_add(self.fail)
 
     def fail(self):
+        self.auth_in_progress = False
         if hasattr(self, 'password_entry'):
             self.password_entry.set_sensitive(True)
             self.password_entry.set_text("")
