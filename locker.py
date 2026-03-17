@@ -1,5 +1,6 @@
 import gi
 import os
+import pwd
 import pam
 import signal
 import datetime
@@ -24,7 +25,8 @@ class FingerprintManager:
             self.device_path = self.manager.GetDefaultDevice()
             self.device = self.bus.get("net.reactivated.Fprint", self.device_path)
             self.device.VerifyStatus.connect(self.on_verify_status)
-            self.device.Claim(os.getlogin())
+            self.username = pwd.getpwuid(os.getuid()).pw_name
+            self.device.Claim(self.username)
             self.device.VerifyStart("any")
             print("[Fingerprint] Scanner active")
         except Exception as e:
@@ -40,7 +42,7 @@ class FingerprintManager:
 class LockScreen(Gtk.ApplicationWindow):
     def __init__(self, monitor, is_primary, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.username = os.getlogin()
+        self.username = pwd.getpwuid(os.getuid()).pw_name 
 
         # Layer shell must be called before window is realized
         Gtk4LayerShell.init_for_window(self)
