@@ -17,27 +17,49 @@ signal.signal(signal.SIGTERM, signal.SIG_IGN)
 
 class FingerprintManager:
     def __init__(self, on_success_callback):
+        self.bus = None
+        self.manager = None
+        self.device = None
+        self.claimed = False
+
         try:
             self.bus = SystemBus()
             self.on_success = on_success_callback
             self.manager = self.bus.get(
-                    "net.reactivated.Fprint", "/net/reactivated/Fprint/Manager")
+                "net.reactivated.Fprint", "/net/reactivated/Fprint/Manager")
             self.device_path = self.manager.GetDefaultDevice()
             self.device = self.bus.get("net.reactivated.Fprint", self.device_path)
             self.device.VerifyStatus.connect(self.on_verify_status)
             self.username = pwd.getpwuid(os.getuid()).pw_name
             self.device.Claim(self.username)
+            self.claimed = True
             self.device.VerifyStart("any")
             print("[Fingerprint] Scanner active")
         except Exception as e:
             print(f"[Fingerprint] Init failed (maybe already running?): {e}")
+
+    def cleanup(self):
+        if not self.device:
+            return
+        try:
+            self.device.VerifyStop()
+        except Exception as e:
+            print(f"[Fingerprint] VerifyStop failed: {e}")
+
+        if self.claimed:
+            try:
+                self.device.Release()
+                self.claimed = False
+            except Exception as e:
+                print(f"[Fingerprint] Release failed: {e}")
 
     def on_verify_status(self, result, done):
         if result == "verify-match":
             GLib.idle_add(self.on_success)
         elif not done:
             try: self.device.VerifyStart("any")
-            except: pass
+            except Exception as e:
+                print(f"[Fingerprint] Verify restart failed: {e}")
 
 class LockScreen(Gtk.ApplicationWindow):
     def __init__(self, monitor, is_primary, *args, **kwargs):
