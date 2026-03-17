@@ -1,0 +1,119 @@
+import gi
+import os
+import pam
+import signal
+import datetime
+import threading
+from pydbus import SystemBus
+
+gi.require_version('Gtk', '4.0')
+gi.require_version('Gtk4LayerShell', '1.0')
+from gi.repository import Gtk, Gtk4LayerShell, GLib, Gdk
+
+# Ignore exit signals for security
+signal.signal(signal.SIGINT, signal.SIG_IGN)
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+
+class FingerprintManager:
+    def __init__(self, on_success_callback):
+        try:
+            self.bus = SystemBus()
+            self.on_success = on_success_callback
+            self.manager = self.bus.get(
+                    "net.reactivated.Fprint", "/net/reactivated/Fprint/Manager")
+            self.device_path = self.manager.GetDefaultDevice()
+            self.device = self.bus.get("net.reactivated.Fprint", self.device_path)
+            self.device.VerifyStatus.connect(self.on_verify_status)
+            self.device.Claim(os.getlogin())
+            self.device.VerifyStart("any")
+            print("[Fingerprint] Scanner active")
+        except Exception as e:
+            print(f"[Fingerprint] Init failed (maybe already running?): {e}")
+
+    def on_verify_status(self, result, done):
+        if result == "verify-match":
+            GLib.idle_add(self.on_success)
+        elif not done:
+            try: self.device.VerifyStart("any")
+            except: pass
+
+class LockScreen(Gtk.ApplicationWindow):
+    def __init__(self, monitor, is_primary, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.username = os.getlogin()
+
+        # Layer shell must be called before window is realized
+        Gtk4LayerShell.init_for_window(self)
+        Gtk4LayerShell.set_monitor(self, monitor)
+        Gtk4LayerShell.set_layer(self, Gtk4LayerShell.Layer.OVERLAY)
+        Gtk4LayerShell.set_namespace(self, "lockscreen")
+        Gtk4LayerShell.set_exclusive_zone(self, -1)
+        
+        if is_primary:
+            Gtk4LayerShell.set_keyboard_mode(self, Gtk4LayerShell.KeyboardMode.EXCLUSIVE)
+        
+        for edge in [Gtk4LayerShell.Edge.LEFT, Gtk4LayerShell.Edge.RIGHT, 
+                    Gtk4LayerShell.Edge.TOP, Gtk4LayerShell.Edge.BOTTOM]:
+            Gtk4LayerShell.set_anchor(self, edge, True)
+
+        # ui
+        self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
+        self.box.set_valign(Gtk.Align.CENTER)
+        self.box.set_halign(Gtk.Align.CENTER)
+
+        self.label_clock = Gtk.Label()
+        self.box.append(self.label_clock)
+
+        if is_primary:
+            self.label_status = Gtk.Label(label="Password or Fingerprint")
+            self.password_entry = Gtk.Entry(visibility=False)
+            self.password_entry.connect("activate", self.on_pass_submit)
+            self.box.append(self.label_status)
+            self.box.append(self.password_entry)
+        
+        self.set_child(self.box)
+        self.update_clock()
+        GLib.timeout_add(1000, self.update_clock)
+
+    def update_clock(self):
+        now = datetime.datetime.now().strftime("%H:%M")
+        # todo: make this customizeble via config
+        self.label_clock.set_markup(f"<span size='60000' weight='bold' color='white'>{now}</span>")
+        return True
+
+    def on_pass_submit(self, entry):
+        password = entry.get_text()
+        entry.set_sensitive(False)
+        threading.Thread(target=self.check_pam, args=(password,), daemon=True).start()
+
+    def check_pam(self, password):
+        if pam.pam().authenticate(self.username, password, service="lockwayland"):
+            GLib.idle_add(os._exit, 0)
+        else:
+            GLib.idle_add(self.fail)
+
+    def fail(self):
+        if hasattr(self, 'password_entry'):
+            self.password_entry.set_sensitive(True)
+            self.password_entry.set_text("")
+            self.password_entry.grab_focus()
+
+def on_activate(app):
+    display = Gdk.Display.get_default()
+    monitors = display.get_monitors()
+    
+    # Spawn windows in every monitor that is already there 
+    # todo: check if a new monitor is plugged in,
+    # and spawn the lockscreen there as well.
+    for i in range(monitors.get_n_items()):
+        monitor = monitors.get_item(i)
+        win = LockScreen(monitor, is_primary=(i == 0), application=app)
+        win.present()
+    
+    # Start fingerprint once for the whole app
+    app.fprint = FingerprintManager(lambda: os._exit(0))
+
+if __name__ == "__main__":
+    app = Gtk.Application(application_id='com.mertt.lockwayland')
+    app.connect('activate', on_activate)
+    app.run(None)
