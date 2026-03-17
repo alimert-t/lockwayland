@@ -30,7 +30,7 @@ class FingerprintManager:
             self.device_path = self.manager.GetDefaultDevice()
             self.device = self.bus.get("net.reactivated.Fprint", self.device_path)
             self.device.VerifyStatus.connect(self.on_verify_status)
-            self.username = pwd.getpwuid(os.getuid()).pw_name
+            self.username = get_username()
             self.device.Claim(self.username)
             self.claimed = True
             self.device.VerifyStart("any")
@@ -69,7 +69,7 @@ class FingerprintManager:
 class LockScreen(Gtk.ApplicationWindow):
     def __init__(self, monitor, is_primary, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.username = pwd.getpwuid(os.getuid()).pw_name
+        self.username = get_username()
 
         self.auth_in_progress = False
 
@@ -145,6 +145,9 @@ class LockScreen(Gtk.ApplicationWindow):
                 return False
 
             GLib.timeout_add(500, reset_password_entry)
+
+def get_username():
+    return pwd.getpwuid(os.getuid()).pw_name
 
 def request_unlock(app):
     if hasattr(app, "fprint") and app.fprint:
