@@ -123,7 +123,7 @@ class LockScreen(Gtk.ApplicationWindow):
     
     def check_pam(self, password):
         if pam.pam().authenticate(self.username, password, service="lockwayland"):
-            GLib.idle_add(request_unlock)
+            GLib.idle_add(request_unlock, self.get_application())
         else:
             GLib.idle_add(self.fail)
 
@@ -141,7 +141,9 @@ class LockScreen(Gtk.ApplicationWindow):
 
             GLib.timeout_add(500, reset_password_entry)
 
-def request_unlock():
+def request_unlock(app):
+    if hasattr(app, "fprint") and app.fprint:
+        app.fprint.cleanup()
     os._exit(0)
 
 def on_activate(app):
@@ -157,7 +159,7 @@ def on_activate(app):
         win.present()
     
     # Start fingerprint once for the whole app
-    app.fprint = FingerprintManager(request_unlock)
+    app.fprint = FingerprintManager(lambda: request_unlock(app))
 
 if __name__ == "__main__":
     app = Gtk.Application(application_id='com.mertt.lockwayland')
