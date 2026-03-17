@@ -60,7 +60,7 @@ class FingerprintManager:
     def on_verify_status(self, result, done):
         if result == "verify-match":
             GLib.idle_add(self.on_success)
-        elif not done:
+        elif not done and self.device:
             try:
                 self.device.VerifyStart("any")
             except Exception as e:
