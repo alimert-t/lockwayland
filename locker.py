@@ -108,9 +108,16 @@ class LockScreen(Gtk.ApplicationWindow):
     def fail(self):
         self.auth_in_progress = False
         if hasattr(self, 'password_entry'):
-            self.password_entry.set_sensitive(True)
+            self.label_status.set_label("Authentication failed!")
             self.password_entry.set_text("")
-            self.password_entry.grab_focus()
+            
+            def reset_password_entry():
+                self.password_entry.set_sensitive(True)
+                self.password_entry.grab_focus()
+                self.label_status.set_label("Password or Fingerprint")
+                return False
+
+            GLib.timeout_add(500, reset_password_entry)
 
 def request_unlock():
     os._exit(0)
