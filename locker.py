@@ -127,7 +127,10 @@ class LockScreen(Gtk.ApplicationWindow):
                 ).start()
     
     def check_pam(self, password):
-        if pam.pam().authenticate(self.username, password, service="lockwayland"):
+        ok = pam.pam().authenticate(self.username, password, service="lockwayland")
+        password = None
+
+        if ok:
             GLib.idle_add(request_unlock, self.get_application())
         else:
             GLib.idle_add(self.fail)
