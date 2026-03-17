@@ -42,7 +42,7 @@ class FingerprintManager:
 class LockScreen(Gtk.ApplicationWindow):
     def __init__(self, monitor, is_primary, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.username = pwd.getpwuid(os.getuid()).pw_name 
+        self.username = pwd.getpwuid(os.getuid()).pw_name
 
         # Layer shell must be called before window is realized
         Gtk4LayerShell.init_for_window(self)
@@ -87,10 +87,10 @@ class LockScreen(Gtk.ApplicationWindow):
         password = entry.get_text()
         entry.set_sensitive(False)
         threading.Thread(target=self.check_pam, args=(password,), daemon=True).start()
-
+    
     def check_pam(self, password):
         if pam.pam().authenticate(self.username, password, service="lockwayland"):
-            GLib.idle_add(os._exit, 0)
+            GLib.idle_add(request_unlock)
         else:
             GLib.idle_add(self.fail)
 
@@ -99,6 +99,9 @@ class LockScreen(Gtk.ApplicationWindow):
             self.password_entry.set_sensitive(True)
             self.password_entry.set_text("")
             self.password_entry.grab_focus()
+
+def request_unlock():
+    os._exit(0)
 
 def on_activate(app):
     display = Gdk.Display.get_default()
@@ -113,7 +116,7 @@ def on_activate(app):
         win.present()
     
     # Start fingerprint once for the whole app
-    app.fprint = FingerprintManager(lambda: os._exit(0))
+    app.fprint = FingerprintManager(request_unlock)
 
 if __name__ == "__main__":
     app = Gtk.Application(application_id='com.mertt.lockwayland')
