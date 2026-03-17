@@ -41,6 +41,7 @@ class FingerprintManager:
     def cleanup(self):
         if not self.device:
             return
+    
         try:
             self.device.VerifyStop()
         except Exception as e:
@@ -53,11 +54,15 @@ class FingerprintManager:
             except Exception as e:
                 print(f"[Fingerprint] Release failed: {e}")
 
+        self.claimed = False
+        self.device = None
+
     def on_verify_status(self, result, done):
         if result == "verify-match":
             GLib.idle_add(self.on_success)
         elif not done:
-            try: self.device.VerifyStart("any")
+            try:
+                self.device.VerifyStart("any")
             except Exception as e:
                 print(f"[Fingerprint] Verify restart failed: {e}")
 
