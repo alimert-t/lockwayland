@@ -155,7 +155,11 @@ def get_username():
 def request_unlock(app):
     if hasattr(app, "fprint") and app.fprint:
         app.fprint.cleanup()
-    os._exit(0)
+    
+    for window in app.get_windows():
+        window.close()
+
+    app.quit()
 
 def on_activate(app):
     display = Gdk.Display.get_default()
