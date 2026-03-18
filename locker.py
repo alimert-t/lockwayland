@@ -70,24 +70,27 @@ class LockScreen(Gtk.ApplicationWindow):
     def __init__(self, monitor, is_primary, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.username = get_username()
-
         self.auth_in_progress = False
 
-        # Layer shell must be called before window is realized
+        # Layer shell
         Gtk4LayerShell.init_for_window(self)
         Gtk4LayerShell.set_monitor(self, monitor)
         Gtk4LayerShell.set_layer(self, Gtk4LayerShell.Layer.OVERLAY)
         Gtk4LayerShell.set_namespace(self, "lockscreen")
         Gtk4LayerShell.set_exclusive_zone(self, -1)
-        
+
         if is_primary:
             Gtk4LayerShell.set_keyboard_mode(self, Gtk4LayerShell.KeyboardMode.EXCLUSIVE)
-        
-        for edge in [Gtk4LayerShell.Edge.LEFT, Gtk4LayerShell.Edge.RIGHT, 
-                    Gtk4LayerShell.Edge.TOP, Gtk4LayerShell.Edge.BOTTOM]:
+
+        for edge in [
+            Gtk4LayerShell.Edge.LEFT,
+            Gtk4LayerShell.Edge.RIGHT,
+            Gtk4LayerShell.Edge.TOP,
+            Gtk4LayerShell.Edge.BOTTOM,
+        ]:
             Gtk4LayerShell.set_anchor(self, edge, True)
 
-        # ui
+        # UI
         self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
         self.box.set_valign(Gtk.Align.CENTER)
         self.box.set_halign(Gtk.Align.CENTER)
@@ -101,16 +104,25 @@ class LockScreen(Gtk.ApplicationWindow):
             self.password_entry.connect("activate", self.on_pass_submit)
             self.box.append(self.label_status)
             self.box.append(self.password_entry)
-        
+
         self.set_child(self.box)
+
+        # CSS classes
+        self.add_css_class("lock-window")
+        self.box.add_css_class("lock-container")
+        self.label_clock.add_css_class("lock-clock")
+
+        if is_primary:
+            self.label_status.add_css_class("lock-status")
+            self.password_entry.add_css_class("lock-entry")
+
         self.update_clock()
         GLib.timeout_add(1000, self.update_clock)
 
     def update_clock(self):
         now = datetime.datetime.now().strftime("%H:%M")
         # todo: make this customizeble via config
-        self.label_clock.set_markup(
-                f"<span size='60000' weight='bold' color='white'>{now}</span>")
+        self.label_clock.set_text(now)
         return True
 
     def on_pass_submit(self, entry):
@@ -170,6 +182,8 @@ def request_unlock(app):
 def on_activate(app):
     app.unlocking = False
 
+    load_css()
+
     display = Gdk.Display.get_default()
     monitors = display.get_monitors()
     
@@ -183,6 +197,30 @@ def on_activate(app):
     
     # Start fingerprint once for the whole app
     app.fprint = FingerprintManager(lambda: request_unlock(app))
+
+
+def load_css():
+    provider = Gtk.CssProvider()
+
+    with open("lockwayland_default.css", "rb") as f:
+        provider.load_from_data(f.read())
+
+    Gtk.StyleContext.add_provider_for_display(
+        Gdk.Display.get_default(),
+        provider,
+        Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+    )
+
+    if os.path.exists("config.css"):
+        override_provider = Gtk.CssProvider()
+        with open("config.css", "rb") as f:
+            override_provider.load_from_data(f.read())
+
+        Gtk.StyleContext.add_provider_for_display(
+            Gdk.Display.get_default(),
+            override_provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+        )
 
 if __name__ == "__main__":
     app = Gtk.Application(application_id='com.mertt.lockwayland')
