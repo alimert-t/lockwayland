@@ -104,7 +104,8 @@ class LockScreen(Gtk.ApplicationWindow):
         self.box.append(self.label_clock)
 
         if is_primary:
-            status_ready = self.get_application().config.get("status_ready", "Password or Fingerprint")
+            status_ready = self.get_application().config.get(
+                    "status_ready", "Password or Fingerprint")
             self.label_status = Gtk.Label(label=status_ready)
             self.password_entry = Gtk.Entry(visibility=False)
             self.password_entry.connect("activate", self.on_pass_submit)
@@ -155,13 +156,16 @@ class LockScreen(Gtk.ApplicationWindow):
 
     def fail(self):
         self.auth_in_progress = False
-        if hasattr(self, 'password_entry'):
-            status_fail = self.get_application().config.get("status_fail", "Authentication failed!")
+
+        if hasattr(self, "password_entry"):
+            app_config = self.get_application().config
+            status_fail = app_config.get("status_fail", "Authentication failed!")
             status_ready = app_config.get("status_ready", "Password or Fingerprint")
-            retry_delay = get_config_int(self.get_application().config, "auth_retry_delay_ms", 500)
-            self.label_status.set_label(status_fail) 
+            retry_delay = get_config_int(app_config, "auth_retry_delay_ms", 500)
+
+            self.label_status.set_label(status_fail)
             self.password_entry.set_text("")
-            
+
             def reset_password_entry():
                 self.password_entry.set_sensitive(True)
                 self.password_entry.grab_focus()
@@ -265,8 +269,8 @@ def load_config():
         "wallpaper_blur_radius": "8",
     }
 
-    config_path = "lockwayland.conf"
-    if not os.path.exists(config_path):
+    config_path = BASE_DIR / "lockwayland.conf"
+    if not config_path.exists():
         return config
 
     with open(config_path, "r", encoding="utf-8") as f:
