@@ -6,6 +6,7 @@ import pam
 import signal
 import datetime
 import threading
+import json
 from pathlib import Path
 from PIL import Image, ImageFilter
 from pydbus import SystemBus
@@ -315,13 +316,41 @@ def resolve_wallpaper_path(url_value):
 
     return BASE_DIR / path
 
-# todo: cache the blurred wallpaper
 def build_blurred_wallpaper(source_path, blur_radius):
+    source_path = Path(source_path).resolve()
     output_path = BASE_DIR / ".lockwayland_blurred.png"
+    meta_path = BASE_DIR / ".lockwayland_blurred.meta"
+
+    try:
+        source_mtime = source_path.stat().st_mtime
+    except Exception as e:
+        raise RuntimeError(f"Could not stat wallpaper {source_path}: {e}")
+
+    cache_data = {
+        "source_path": str(source_path),
+        "source_mtime": source_mtime,
+        "blur_radius": blur_radius,
+    }
+
+    if output_path.exists() and meta_path.exists():
+        try:
+            with open(meta_path, "r", encoding="utf-8") as f:
+                existing_cache = json.load(f)
+
+            if existing_cache == cache_data:
+                return output_path
+        except Exception as e:
+            print(f"[Blur] Cache read failed, regenerating: {e}")
 
     with Image.open(source_path) as img:
         blurred = img.filter(ImageFilter.GaussianBlur(radius=blur_radius))
         blurred.save(output_path)
+
+    try:
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump(cache_data, f)
+    except Exception as e:
+        print(f"[Blur] Cache write failed: {e}")
 
     return output_path
 
