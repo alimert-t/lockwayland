@@ -1,10 +1,13 @@
-import gi
 import os
+import re
+import gi
 import pwd
 import pam
 import signal
 import datetime
 import threading
+from pathlib import Path
+from PIL import Image, ImageFilter
 from pydbus import SystemBus
 
 gi.require_version('Gtk', '4.0')
@@ -14,6 +17,8 @@ from gi.repository import Gtk, Gtk4LayerShell, GLib, Gdk
 # Ignore exit signals for security
 signal.signal(signal.SIGINT, signal.SIG_IGN)
 signal.signal(signal.SIGTERM, signal.SIG_IGN)
+
+BASE_DIR = Path(__file__).resolve().parent
 
 class FingerprintManager:
     def __init__(self, on_success_callback):
@@ -187,7 +192,7 @@ def on_activate(app):
     app.unlocking = False
 
     app.config = load_config()
-    load_css()
+    load_css(app.config)
 
     display = Gdk.Display.get_default()
     monitors = display.get_monitors()
@@ -204,10 +209,12 @@ def on_activate(app):
     app.fprint = FingerprintManager(lambda: request_unlock(app))
 
 
-def load_css():
-    provider = Gtk.CssProvider()
+def load_css(app_config):
+    default_css_path = BASE_DIR / "lockwayland_default.css"
+    config_css_path = BASE_DIR / "config.css"
 
-    with open("lockwayland_default.css", "rb") as f:
+    provider = Gtk.CssProvider()
+    with open(default_css_path, "rb") as f:
         provider.load_from_data(f.read())
 
     Gtk.StyleContext.add_provider_for_display(
@@ -216,16 +223,37 @@ def load_css():
         Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
     )
 
-    if os.path.exists("config.css"):
-        override_provider = Gtk.CssProvider()
-        with open("config.css", "rb") as f:
-            override_provider.load_from_data(f.read())
+    config_css_text = None
 
+    if config_css_path.exists():
+        config_css_text = config_css_path.read_text(encoding="utf-8")
+
+        override_provider = Gtk.CssProvider()
+        override_provider.load_from_data(config_css_text.encode("utf-8"))
         Gtk.StyleContext.add_provider_for_display(
             Gdk.Display.get_default(),
             override_provider,
             Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
         )
+
+    blur_enabled = get_config_bool(app_config, "wallpaper_blur", False)
+    blur_radius = get_config_int(app_config, "wallpaper_blur_radius", 8)
+
+    if blur_enabled and config_css_text:
+        wallpaper_url = extract_wallpaper_url(config_css_text)
+        wallpaper_path = resolve_wallpaper_path(wallpaper_url)
+
+        if wallpaper_path and wallpaper_path.exists():
+            try:
+                blurred_path = build_blurred_wallpaper(wallpaper_path, blur_radius)
+                blur_css = f'''
+window.lock-window {{
+    background-image: url("file://{blurred_path}");
+}}
+'''
+                load_css_provider_from_text(blur_css)
+            except Exception as e:
+                print(f"[Blur] Failed to blur wallpaper: {e}")
 
 def load_config():
     config = {
@@ -263,6 +291,44 @@ def get_config_int(config, key, default):
         return int(config.get(key, default))
     except (TypeError, ValueError):
         return default
+
+def extract_wallpaper_url(css_text):
+    match = re.search(r'background-image\s*:\s*url\(["\']?(.*?)["\']?\)', css_text)
+    if not match:
+        return None
+    return match.group(1)
+
+def resolve_wallpaper_path(url_value):
+    if not url_value:
+        return None
+
+    if url_value.startswith("file://"):
+        return Path(url_value[7:])
+
+    path = Path(url_value)
+    if path.is_absolute():
+        return path
+
+    return BASE_DIR / path
+
+# todo: cache the blurred wallpaper
+def build_blurred_wallpaper(source_path, blur_radius):
+    output_path = BASE_DIR / ".lockwayland_blurred.png"
+
+    with Image.open(source_path) as img:
+        blurred = img.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+        blurred.save(output_path)
+
+    return output_path
+
+def load_css_provider_from_text(css_text):
+    provider = Gtk.CssProvider()
+    provider.load_from_data(css_text.encode("utf-8"))
+    Gtk.StyleContext.add_provider_for_display(
+        Gdk.Display.get_default(),
+        provider,
+        Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+    )
 
 if __name__ == "__main__":
     app = Gtk.Application(application_id='com.mertt.lockwayland')
