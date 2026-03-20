@@ -102,6 +102,12 @@ class LockScreen(Gtk.ApplicationWindow):
         ]:
             Gtk4LayerShell.set_anchor(self, edge, True)
 
+        self.connect("close-request", self.on_close_request)
+        logger.info(
+            "Created lock window for monitor %s (interactive=%s)",
+            self.monitor_index,
+            self.is_interactive,)
+
         # UI
         self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
         self.box.set_valign(Gtk.Align.CENTER)
@@ -132,6 +138,19 @@ class LockScreen(Gtk.ApplicationWindow):
 
         self.update_clock()
         GLib.timeout_add(1000, self.update_clock)
+
+    def on_close_request(self, *args):
+        app = self.get_application()
+        logger.warning(
+            "Lock window close requested for monitor %s (unlocking=%s)",
+            self.monitor_index,
+            getattr(app, "unlocking", False),)
+
+        if not getattr(app, "unlocking", False):
+            logger.error("Lock window closed unexpectedly; forcing relock")
+            os._exit(1)
+
+        return False
 
     def update_clock(self):
         clock_format = self.get_application().config.get("clock_format", "%H:%M")
@@ -232,6 +251,9 @@ def on_activate(app):
         )
         app.lock_windows.append(win)
         win.present()
+        logger.info(
+            "Presented lock window for monitor %s (interactive=%s)",
+            i,i == 0,) 
 
     app.fprint = FingerprintManager(lambda: request_unlock(app))
 
