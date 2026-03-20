@@ -54,14 +54,14 @@ class FingerprintManager:
         try:
             self.device.VerifyStop()
         except Exception as e:
-            logger.warning(f"[Fingerprint] VerifyStop failed: {e}")
+            logger.warning("[Fingerprint] VerifyStop failed: %s", e)
 
         if self.claimed:
             try:
                 self.device.Release()
                 self.claimed = False
             except Exception as e:
-                logger.warning(f"[Fingerprint] Release failed: {e}")
+                logger.warning(f"[Fingerprint] Release failed: %s", e)
 
         self.claimed = False
         self.device = None
@@ -73,7 +73,7 @@ class FingerprintManager:
             try:
                 self.device.VerifyStart("any")
             except Exception as e:
-                logger.warning(f"[Fingerprint] Verify restart failed: {e}")
+                logger.warning(f"[Fingerprint] Verify restart failed: %s", e)
 
 class LockScreen(Gtk.ApplicationWindow):
     def __init__(self, monitor, is_primary, *args, **kwargs):
@@ -257,7 +257,7 @@ def load_css(app_config):
             override_provider,
             Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
         )
-
+    logger.info("Loaded CSS override from %s", config_css_path)   
     blur_enabled = get_config_bool(app_config, "wallpaper_blur", False)
     blur_radius = get_config_int(app_config, "wallpaper_blur_radius", 8)
 
@@ -278,7 +278,7 @@ window.lock-window {{
                         "Applying blurred wallpaper from %s with radius %s",
                         wallpaper_path, blur_radius) 
             except Exception as e:
-                logger.warning(f"[Blur] Failed to blur wallpaper: {e}")
+                logger.warning(f"[Blur] Failed to blur wallpaper: %s", e)
 
 def load_config():
     config = {
@@ -292,6 +292,9 @@ def load_config():
 
     config_path = BASE_DIR / "lockwayland.conf"
     if not config_path.exists():
+        logger.info(
+                "No config file found at %s, using defaults",
+                config_path)
         return config
 
     with open(config_path, "r", encoding="utf-8") as f:
@@ -304,7 +307,7 @@ def load_config():
 
             key, value = line.split("=", 1)
             config[key.strip()] = value.strip()
-
+    logger.info("Loaded config from %s", config_path)
     return config
 
 def get_config_bool(config, key, default=False):
@@ -360,7 +363,7 @@ def build_blurred_wallpaper(source_path, blur_radius):
             if existing_cache == cache_data:
                 return output_path
         except Exception as e:
-            logger.warning(f"[Blur] Cache read failed, regenerating: {e}")
+            logger.warning(f"[Blur] Cache read failed, regenerating: %s", e)
 
     with Image.open(source_path) as img:
         blurred = img.filter(ImageFilter.GaussianBlur(radius=blur_radius))
@@ -370,7 +373,7 @@ def build_blurred_wallpaper(source_path, blur_radius):
         with open(meta_path, "w", encoding="utf-8") as f:
             json.dump(cache_data, f)
     except Exception as e:
-        logger.warning(f"[Blur] Cache write failed: {e}")
+        logger.warning(f"[Blur] Cache write failed: %s", e)
 
     return output_path
 
