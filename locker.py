@@ -44,7 +44,8 @@ class FingerprintManager:
             self.device.VerifyStart("any")
             logger.info("[Fingerprint] Scanner active")
         except Exception as e:
-            logger.warning(f"[Fingerprint] Init failed (maybe already running?): {e}")
+            logger.warning(
+                    "[Fingerprint] Init failed (maybe already running?): %s", e)
 
     def cleanup(self):
         if not self.device:
@@ -149,12 +150,19 @@ class LockScreen(Gtk.ApplicationWindow):
                 ).start()
     
     def check_pam(self, password):
-        ok = pam.pam().authenticate(self.username, password, service="lockwayland")
+        ok = pam.pam().authenticate(
+                self.username, password, service="lockwayland")
         password = None
 
         if ok:
+            logger.info(
+                    "Password authentication succeeded for user %s",
+                    self.username)
             GLib.idle_add(request_unlock, self.get_application())
         else:
+            logger.info(
+                    "Password authentication failed for user %s",
+                    self.username)
             GLib.idle_add(self.fail)
 
     def fail(self):
@@ -181,6 +189,7 @@ def get_username():
     return pwd.getpwuid(os.getuid()).pw_name
 
 def request_unlock(app):
+    logger.info("Unlock requested")
     if getattr(app, "unlocking", False):
         return False
 
@@ -198,6 +207,8 @@ def request_unlock(app):
 def on_activate(app):
     app.unlocking = False
 
+    logger.info("Activating lockwayland") 
+
     app.config = load_config()
     load_css(app.config)
 
@@ -207,6 +218,10 @@ def on_activate(app):
     # Spawn windows in every monitor that is already there 
     # todo: check if a new monitor is plugged in,
     # and spawn the lockscreen there as well.
+    # todo: there is a critical bug, when switching to different
+    # tty and coming back, one of the monitors becoems unlocked while 
+    # the other is locked. Should be fixed ASAP. 
+    logger.info("Detected %d monitor(s)", monitors.get_n_items())
     for i in range(monitors.get_n_items()):
         monitor = monitors.get_item(i)
         win = LockScreen(monitor, is_primary=(i == 0), application=app)
@@ -259,6 +274,9 @@ window.lock-window {{
 }}
 '''
                 load_css_provider_from_text(blur_css)
+                logger.info(
+                        "Applying blurred wallpaper from %s with radius %s",
+                        wallpaper_path, blur_radius) 
             except Exception as e:
                 logger.warning(f"[Blur] Failed to blur wallpaper: {e}")
 
