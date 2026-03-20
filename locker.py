@@ -61,7 +61,7 @@ class FingerprintManager:
                 self.device.Release()
                 self.claimed = False
             except Exception as e:
-                logger.warning(f"[Fingerprint] Release failed: %s", e)
+                logger.warning("[Fingerprint] Release failed: %s", e)
 
         self.claimed = False
         self.device = None
@@ -73,13 +73,16 @@ class FingerprintManager:
             try:
                 self.device.VerifyStart("any")
             except Exception as e:
-                logger.warning(f"[Fingerprint] Verify restart failed: %s", e)
+                logger.warning("[Fingerprint] Verify restart failed: %s", e)
 
 class LockScreen(Gtk.ApplicationWindow):
-    def __init__(self, monitor, is_primary, *args, **kwargs):
+    def __init__(self, monitor, monitor_index, is_interactive, *args, **kwargs):
+
         super().__init__(*args, **kwargs)
-        self.username = get_username()
         self.auth_in_progress = False
+        self.monitor_index = monitor_index
+        self.is_interactive = is_interactive
+        self.username = get_username()
 
         # Layer shell
         Gtk4LayerShell.init_for_window(self)
@@ -88,7 +91,7 @@ class LockScreen(Gtk.ApplicationWindow):
         Gtk4LayerShell.set_namespace(self, "lockscreen")
         Gtk4LayerShell.set_exclusive_zone(self, -1)
 
-        if is_primary:
+        if is_interactive:
             Gtk4LayerShell.set_keyboard_mode(self, Gtk4LayerShell.KeyboardMode.EXCLUSIVE)
 
         for edge in [
@@ -107,7 +110,7 @@ class LockScreen(Gtk.ApplicationWindow):
         self.label_clock = Gtk.Label()
         self.box.append(self.label_clock)
 
-        if is_primary:
+        if is_interactive:
             status_ready = self.get_application().config.get(
                     "status_ready", "Password or Fingerprint")
             self.label_status = Gtk.Label(label=status_ready)
@@ -123,7 +126,7 @@ class LockScreen(Gtk.ApplicationWindow):
         self.box.add_css_class("lock-container")
         self.label_clock.add_css_class("lock-clock")
 
-        if is_primary:
+        if is_interactive:
             self.label_status.add_css_class("lock-status")
             self.password_entry.add_css_class("lock-entry")
 
@@ -189,9 +192,10 @@ def get_username():
     return pwd.getpwuid(os.getuid()).pw_name
 
 def request_unlock(app):
-    logger.info("Unlock requested")
     if getattr(app, "unlocking", False):
+        logger.info("Unlock request ignored; unlock already in progress") 
         return False
+    logger.info("Unlock requested")
 
     app.unlocking = True
     
@@ -206,30 +210,30 @@ def request_unlock(app):
 
 def on_activate(app):
     app.unlocking = False
+    app.lock_windows = []
 
-    logger.info("Activating lockwayland") 
+    logger.info("Activating lockwayland")
 
     app.config = load_config()
     load_css(app.config)
 
     display = Gdk.Display.get_default()
     monitors = display.get_monitors()
-    
-    # Spawn windows in every monitor that is already there 
-    # todo: check if a new monitor is plugged in,
-    # and spawn the lockscreen there as well.
-    # todo: there is a critical bug, when switching to different
-    # tty and coming back, one of the monitors becoems unlocked while 
-    # the other is locked. Should be fixed ASAP. 
+
     logger.info("Detected %d monitor(s)", monitors.get_n_items())
+
     for i in range(monitors.get_n_items()):
         monitor = monitors.get_item(i)
-        win = LockScreen(monitor, is_primary=(i == 0), application=app)
+        win = LockScreen(
+            monitor,
+            monitor_index=i,
+            is_interactive=(i == 0),
+            application=app,
+        )
+        app.lock_windows.append(win)
         win.present()
-    
-    # Start fingerprint once for the whole app
-    app.fprint = FingerprintManager(lambda: request_unlock(app))
 
+    app.fprint = FingerprintManager(lambda: request_unlock(app))
 
 def load_css(app_config):
     default_css_path = BASE_DIR / "lockwayland_default.css"
@@ -257,7 +261,7 @@ def load_css(app_config):
             override_provider,
             Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
         )
-    logger.info("Loaded CSS override from %s", config_css_path)   
+        logger.info("Loaded CSS override from %s", config_css_path)   
     blur_enabled = get_config_bool(app_config, "wallpaper_blur", False)
     blur_radius = get_config_int(app_config, "wallpaper_blur_radius", 8)
 
@@ -278,7 +282,7 @@ window.lock-window {{
                         "Applying blurred wallpaper from %s with radius %s",
                         wallpaper_path, blur_radius) 
             except Exception as e:
-                logger.warning(f"[Blur] Failed to blur wallpaper: %s", e)
+                logger.warning("[Blur] Failed to blur wallpaper: %s", e)
 
 def load_config():
     config = {
@@ -363,7 +367,7 @@ def build_blurred_wallpaper(source_path, blur_radius):
             if existing_cache == cache_data:
                 return output_path
         except Exception as e:
-            logger.warning(f"[Blur] Cache read failed, regenerating: %s", e)
+            logger.warning("[Blur] Cache read failed, regenerating: %s", e)
 
     with Image.open(source_path) as img:
         blurred = img.filter(ImageFilter.GaussianBlur(radius=blur_radius))
@@ -373,7 +377,7 @@ def build_blurred_wallpaper(source_path, blur_radius):
         with open(meta_path, "w", encoding="utf-8") as f:
             json.dump(cache_data, f)
     except Exception as e:
-        logger.warning(f"[Blur] Cache write failed: %s", e)
+        logger.warning("[Blur] Cache write failed: %s", e)
 
     return output_path
 
