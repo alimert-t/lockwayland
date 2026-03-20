@@ -7,6 +7,7 @@ import signal
 import datetime
 import threading
 import json
+import logging
 from pathlib import Path
 from PIL import Image, ImageFilter
 from pydbus import SystemBus
@@ -20,6 +21,7 @@ signal.signal(signal.SIGINT, signal.SIG_IGN)
 signal.signal(signal.SIGTERM, signal.SIG_IGN)
 
 BASE_DIR = Path(__file__).resolve().parent
+logger = logging.getLogger("lockwayland")
 
 class FingerprintManager:
     def __init__(self, on_success_callback):
@@ -40,9 +42,9 @@ class FingerprintManager:
             self.device.Claim(self.username)
             self.claimed = True
             self.device.VerifyStart("any")
-            print("[Fingerprint] Scanner active")
+            logger.info("[Fingerprint] Scanner active")
         except Exception as e:
-            print(f"[Fingerprint] Init failed (maybe already running?): {e}")
+            logger.warning(f"[Fingerprint] Init failed (maybe already running?): {e}")
 
     def cleanup(self):
         if not self.device:
@@ -51,14 +53,14 @@ class FingerprintManager:
         try:
             self.device.VerifyStop()
         except Exception as e:
-            print(f"[Fingerprint] VerifyStop failed: {e}")
+            logger.warning(f"[Fingerprint] VerifyStop failed: {e}")
 
         if self.claimed:
             try:
                 self.device.Release()
                 self.claimed = False
             except Exception as e:
-                print(f"[Fingerprint] Release failed: {e}")
+                logger.warning(f"[Fingerprint] Release failed: {e}")
 
         self.claimed = False
         self.device = None
@@ -70,7 +72,7 @@ class FingerprintManager:
             try:
                 self.device.VerifyStart("any")
             except Exception as e:
-                print(f"[Fingerprint] Verify restart failed: {e}")
+                logger.warning(f"[Fingerprint] Verify restart failed: {e}")
 
 class LockScreen(Gtk.ApplicationWindow):
     def __init__(self, monitor, is_primary, *args, **kwargs):
@@ -258,7 +260,7 @@ window.lock-window {{
 '''
                 load_css_provider_from_text(blur_css)
             except Exception as e:
-                print(f"[Blur] Failed to blur wallpaper: {e}")
+                logger.warning(f"[Blur] Failed to blur wallpaper: {e}")
 
 def load_config():
     config = {
@@ -340,7 +342,7 @@ def build_blurred_wallpaper(source_path, blur_radius):
             if existing_cache == cache_data:
                 return output_path
         except Exception as e:
-            print(f"[Blur] Cache read failed, regenerating: {e}")
+            logger.warning(f"[Blur] Cache read failed, regenerating: {e}")
 
     with Image.open(source_path) as img:
         blurred = img.filter(ImageFilter.GaussianBlur(radius=blur_radius))
@@ -350,7 +352,7 @@ def build_blurred_wallpaper(source_path, blur_radius):
         with open(meta_path, "w", encoding="utf-8") as f:
             json.dump(cache_data, f)
     except Exception as e:
-        print(f"[Blur] Cache write failed: {e}")
+        logger.warning(f"[Blur] Cache write failed: {e}")
 
     return output_path
 
@@ -360,10 +362,15 @@ def load_css_provider_from_text(css_text):
     Gtk.StyleContext.add_provider_for_display(
         Gdk.Display.get_default(),
         provider,
-        Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
-    )
+        Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,)
+
+def setup_logging():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",)
 
 if __name__ == "__main__":
+    setup_logging()
     app = Gtk.Application(application_id='com.mertt.lockwayland')
     app.connect('activate', on_activate)
     app.run(None)
