@@ -12,6 +12,8 @@ import wayland
 from wayland.client import wayland_class
 from wayland.client.memory_pool import SharedMemoryPool
 
+from PIL import Image, ImageDraw, ImageFont
+
 from locker import LockController
 
 logging.basicConfig(
@@ -27,7 +29,8 @@ class SurfaceState:
     lock_surface: "LockSurface"
     width: int = 0
     height: int = 0
-    configured: bool = False 
+    configured: bool = False
+    is_interactive: bool = False
 
 @wayland_class("wl_callback")
 class SyncCallback(wayland.wl_callback):
@@ -158,6 +161,7 @@ class Registry(wayland.wl_registry):
 class LockwaylandSessionApp:
     def __init__(self):
         logger.info(f"Lockwayland ext-session test process pid={os.getpid()}")
+        # To-do: deactivate this when release
         time.sleep(5)
 
         self.shm = None
@@ -223,21 +227,26 @@ class LockwaylandSessionApp:
         wl_surface = self.registry.wl_compositor.create_surface()
         lock_surface = self.session_lock.get_lock_surface(wl_surface, output)
 
-        state = SurfaceState(
-            output=output,
-            wl_surface=wl_surface,
-            lock_surface=lock_surface,
+        is_interactive = not any(
+                existing.is_interactive for existing in self.surfaces.values()
         )
 
-        self.surfaces[output.global_name] = state 
+        state = SurfaceState(
+                output=output,
+                wl_surface=wl_surface,
+                lock_surface=lock_surface,
+                is_interactive=is_interactive,
+        )
 
-        # initial testing without a buffer
-        # the protocol forbids attaching/committing
-        # a buffer before the first configure
+
+        self.surfaces[output.global_name] = state
+
+        # Initial empty commit to trigger configure.
         wl_surface.commit()
 
         logger.info(
-            f"Created lock surface for output {output.global_name} ({output.make} {output.model})"
+            f"Created lock surface for output {output.global_name} "
+            f"({output.make} {output.model}) interactive={is_interactive}"
         )
 
     def remove_output(self, output_name: int):
@@ -336,6 +345,25 @@ class LockSurface(wayland.ext_session_lock_surface_v1):
     def on_configure(self, serial, width, height):
         self.ack_configure(serial)
         self.app.configure_surface(self.output_name, width, height)
+
+# Classless functions / helpers
+def load_font(size):
+    try:
+        return ImageFont.truetype("DejaVuSans.ttf", size)
+    except OSError:
+        return ImageFont.load_default()
+
+def draw_centered_text(draw, text, font, x_center, y, fill):
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_width = bbox[2] - bbox[0]
+    draw.text((x_center - text_width // 2, y), text, font=font, fill=fill)
+
+def copy_image_to_argb8888(image, ptr):
+    image = image.convert("RGBA")
+    pixels = ctypes.cast(ptr, ctypes.POINTER(ctypes.c_uint32))
+
+    for i, (r, g, b, a) in enumerate(image.getdata()):
+        pixels[i] = (a<<24) | (r<<16)| (g<<8) | b
 
 if __name__ == "__main__":
     try:
