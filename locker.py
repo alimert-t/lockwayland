@@ -1,24 +1,11 @@
 import os
-import re
-import gi
 import pwd
 import pam
-import signal
 import datetime
 import threading
 import json
 import logging
 from pathlib import Path
-from PIL import Image, ImageFilter
-from pydbus import SystemBus
-
-gi.require_version('Gtk', '4.0')
-gi.require_version('Gtk4LayerShell', '1.0')
-from gi.repository import Gtk, Gtk4LayerShell, GLib, Gdk
-
-# Ignore exit signals for security
-signal.signal(signal.SIGINT, signal.SIG_IGN)
-signal.signal(signal.SIGTERM, signal.SIG_IGN)
 
 BASE_DIR = Path(__file__).resolve().parent
 logger = logging.getLogger("lockwayland.locker")
