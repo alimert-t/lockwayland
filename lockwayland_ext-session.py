@@ -160,6 +160,10 @@ class Registry(wayland.wl_registry):
     def on_global_remove(self, name):
         logger.info(f"Global removed: name={name}")
 
+        if getattr(self.app, "unlock_requested", False):
+            logger.info(f"Ignoring global remove during unlock: name={name}")
+            return
+
         if name in self.outputs:
             self.app.remove_output(name)
             del self.outputs[name]
@@ -240,6 +244,7 @@ class LockwaylandSessionApp:
 
         wl_surface = self.registry.wl_compositor.create_surface()
         lock_surface = self.session_lock.get_lock_surface(wl_surface, output)
+        lock_surface.output_name = output.global_name
 
         is_interactive = not any(
                 existing.is_interactive for existing in self.surfaces.values()
@@ -254,9 +259,6 @@ class LockwaylandSessionApp:
 
 
         self.surfaces[output.global_name] = state
-
-        # Initial empty commit to trigger configure.
-        wl_surface.commit()
 
         logger.info(
             f"Created lock surface for output {output.global_name} "
@@ -370,6 +372,14 @@ class LockwaylandSessionApp:
 
         logger.info("Unlocking session.")
         self.session_lock.unlock_and_destroy()
+
+        # Give the compositor a chance to process unlock_and_destroy().
+        try:
+            self.display.dispatch_timeout(0.05)
+            self.display.dispatch_timeout(0.05)
+            self.display.dispatch_timeout(0.05)
+        except Exception as e:
+            logger.warning(f"Dispatch after unlock failed: {e}")
         self.running = False
 
     def run(self):
@@ -389,13 +399,19 @@ class LockwaylandSessionApp:
 
 @wayland_class("ext_session_lock_surface_v1")
 class LockSurface(wayland.ext_session_lock_surface_v1):
-    def __init__(self, app, output_name):
+    def __init__(self, app):
         super().__init__(app=app)
         self.app = app
-        self.output_name = output_name
+        self.output_name = None
 
     def on_configure(self, serial, width, height):
         self.ack_configure(serial)
+        
+        if self.output_name is None:
+            logger.warning(
+                "Lock surface configured before output_name was set.")
+            return
+
         self.app.configure_surface(self.output_name, width, height)
 
 # Classless functions / helpers
