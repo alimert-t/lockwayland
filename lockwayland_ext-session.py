@@ -12,6 +12,8 @@ import wayland
 from wayland.client import wayland_class
 from wayland.client.memory_pool import SharedMemoryPool
 
+from locker import LockController
+
 logging.basicConfig(
         level = logging.INFO,
         format = "%(asctime)s %(levelname)s [%(name)s] %(message)s"
@@ -170,9 +172,18 @@ class LockwaylandSessionApp:
         self.session_lock = None
         self.surfaces: dict[int, SurfaceState] = {}
 
+        self.controller = LockController(
+            on_unlock_requested=self.request_unlock,
+            on_state_changed=self.redraw_all,
+        )
+
         signal.signal(signal.SIGINT, signal.SIG_IGN)
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
         signal.signal(signal.SIGUSR1, self.on_test_unlock_signal)
+
+    def redraw_all(self):
+        for output_name in list(self.surfaces.keys()):
+            self.redraw(output_name)
 
     def on_test_unlock_signal(self, signum, frame):
         logger.warning("Received SIGUSR1; test unlock requested")
@@ -310,6 +321,10 @@ class LockwaylandSessionApp:
             self.display.dispatch_timeout(1/30)
 
         logger.info("Exiting.")
+
+    def request_unlock(self):
+        logger.info("Controller requested unlock")
+        self.unlock_requested = True
 
 @wayland_class("ext_session_lock_surface_v1")
 class LockSurface(wayland.ext_session_lock_surface_v1):
