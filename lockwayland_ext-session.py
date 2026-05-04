@@ -317,41 +317,41 @@ class LockwaylandSessionApp:
         state.buffer = buffer
 
         image = Image.new("RGBA", (width, height), (0,0,0,255))
-        # draw = ImageDraw.Draw(image)
-        #
-        # clock_font = load_font(72)
-        # status_font = load_font(24)
-        # password_font = load_font(32)
-        # clock_text = self.controller.clock_text()
-        # status_text = self.controller.status_text
-        # password_text = self.controller.password_display_text()
-        #
-        # center_x = width // 2 
-        # center_y = height // 2 
-        #
-        # draw_centered_text(
-        #     draw,
-        #     clock_text, clock_font,
-        #     center_x, center_y - 120,
-        #     (255,255,255,255)
-        # )
-        #
-        # if state.is_interactive:
-        #     draw_centered_text(
-        #         draw,
-        #         status_text, status_font,
-        #         center_x, center_y - 20,
-        #         (220,220,220,255)
-        # )
-        #
-        #     if password_text:
-        #         draw_centered_text(
-        #         draw,
-        #         password_text, password_font,
-        #         center_x, center_y + 30,
-        #         (255,255,255,255)
-        #     )
-        #
+        draw = ImageDraw.Draw(image)
+
+        clock_font = load_font(72)
+        status_font = load_font(24)
+        password_font = load_font(32)
+        clock_text = self.controller.clock_text()
+        status_text = self.controller.status_text
+        password_text = self.controller.password_display_text()
+
+        center_x = width // 2 
+        center_y = height // 2 
+
+        draw_centered_text(
+            draw,
+            clock_text, clock_font,
+            center_x, center_y - 120,
+            (255,255,255,255)
+        )
+
+        if state.is_interactive:
+            draw_centered_text(
+                draw,
+                status_text, status_font,
+                center_x, center_y - 20,
+                (220,220,220,255)
+        )
+
+            if password_text:
+                draw_centered_text(
+                draw,
+                password_text, password_font,
+                center_x, center_y + 30,
+                (255,255,255,255)
+            )
+
         copy_image_to_argb8888(image, ptr)
 
         state.wl_surface.attach(buffer, 0, 0)
