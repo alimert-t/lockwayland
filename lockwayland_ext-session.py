@@ -164,6 +164,8 @@ class LockwaylandSessionApp:
         # To-do: deactivate this when release
         time.sleep(5)
 
+        self.last_clock_redraw = 0 
+
         self.shm = None
 
         self.running = True
@@ -219,6 +221,12 @@ class LockwaylandSessionApp:
 
         for output in list(self.registry.outputs.values()):
             self.create_lock_surface_for_output(output)
+
+    def maybe_redraw_clock(self):
+        now = time.monotonic()
+        if now - self.last_clock_redraw >= 1:
+            self.last_clock_redraw = now
+            self.redraw_all()
 
     def create_lock_surface_for_output(self, output: Output):
         if output.global_name in self.surfaces:
@@ -296,11 +304,43 @@ class LockwaylandSessionApp:
 
         buffer, ptr = self.shm.pool.create_buffer(width, height)
 
-        # Fill ARGB8888 little-endian buffer with opaque black.
-        pixels = ctypes.cast(ptr, ctypes.POINTER(ctypes.c_uint32))
-        count = width * height
-        for i in range(count):
-            pixels[i] = 0xFF000000
+        image = Image.new("RGBA", (width, height), (0,0,0,255))
+        draw = ImageDraw.Draw(image)
+
+        clock_font = load_font(72)
+        status_font = load_font(24)
+        password_font = load_font(32)
+        clock_text = self.controller.clock_text()
+        status_text = self.controller.status_text
+        password_text = self.controller.password_display_text()
+
+        center_x = width // 2 
+        center_y = height // 2 
+
+        draw_centered_text(
+            draw,
+            clock_text, clock_font,
+            center_x, center_y - 120,
+            (255,255,255,255)
+        )
+
+        if state.is_interactive:
+            draw_centered_text(
+                draw,
+                status_text, status_font,
+                center_x, center_y - 20,
+                (220,220,220,255)
+        )
+
+            if password_text:
+                draw_centered_text(
+                draw,
+                password_text, password_font,
+                center_x, center_y + 30,
+                (255,255,255,255)
+            )
+
+        copy_image_to_argb8888(image, ptr)
 
         state.wl_surface.attach(buffer, 0, 0)
         state.wl_surface.damage_buffer(0, 0, width, height)
@@ -327,6 +367,7 @@ class LockwaylandSessionApp:
             if self.unlock_requested:
                 self.perform_unlock()
 
+            self.maybe_redraw_clock()
             self.display.dispatch_timeout(1/30)
 
         logger.info("Exiting.")
