@@ -16,9 +16,14 @@ from PIL import Image, ImageDraw, ImageFont
 
 from locker import LockController
 
+LOG_PATH = "lockwayland-ext-session.log"
 logging.basicConfig(
         level = logging.INFO,
-        format = "%(asctime)s %(levelname)s [%(name)s] %(message)s"
+        format = "%(asctime)s %(levelname)s [%(name)s] %(message)s",
+        handlers=[
+            logging.FileHandler(LOG_PATH, mode="w"),
+            logging.StreamHandler(),
+            ],
         )
 logger = logging.getLogger("lockwayland.ext_session")
 
@@ -31,6 +36,7 @@ class SurfaceState:
     height: int = 0
     configured: bool = False
     is_interactive: bool = False
+    buffer: object = None
 
 @wayland_class("wl_callback")
 class SyncCallback(wayland.wl_callback):
@@ -302,49 +308,54 @@ class LockwaylandSessionApp:
         width = state.width
         height = state.height
 
+        logger.info(
+                f"Redrawing output {output_name} at {state.width}x{state.height}")
+
         buffer, ptr = self.shm.pool.create_buffer(width, height)
+        state.buffer = buffer
 
         image = Image.new("RGBA", (width, height), (0,0,0,255))
-        draw = ImageDraw.Draw(image)
-
-        clock_font = load_font(72)
-        status_font = load_font(24)
-        password_font = load_font(32)
-        clock_text = self.controller.clock_text()
-        status_text = self.controller.status_text
-        password_text = self.controller.password_display_text()
-
-        center_x = width // 2 
-        center_y = height // 2 
-
-        draw_centered_text(
-            draw,
-            clock_text, clock_font,
-            center_x, center_y - 120,
-            (255,255,255,255)
-        )
-
-        if state.is_interactive:
-            draw_centered_text(
-                draw,
-                status_text, status_font,
-                center_x, center_y - 20,
-                (220,220,220,255)
-        )
-
-            if password_text:
-                draw_centered_text(
-                draw,
-                password_text, password_font,
-                center_x, center_y + 30,
-                (255,255,255,255)
-            )
-
+        # draw = ImageDraw.Draw(image)
+        #
+        # clock_font = load_font(72)
+        # status_font = load_font(24)
+        # password_font = load_font(32)
+        # clock_text = self.controller.clock_text()
+        # status_text = self.controller.status_text
+        # password_text = self.controller.password_display_text()
+        #
+        # center_x = width // 2 
+        # center_y = height // 2 
+        #
+        # draw_centered_text(
+        #     draw,
+        #     clock_text, clock_font,
+        #     center_x, center_y - 120,
+        #     (255,255,255,255)
+        # )
+        #
+        # if state.is_interactive:
+        #     draw_centered_text(
+        #         draw,
+        #         status_text, status_font,
+        #         center_x, center_y - 20,
+        #         (220,220,220,255)
+        # )
+        #
+        #     if password_text:
+        #         draw_centered_text(
+        #         draw,
+        #         password_text, password_font,
+        #         center_x, center_y + 30,
+        #         (255,255,255,255)
+        #     )
+        #
         copy_image_to_argb8888(image, ptr)
 
         state.wl_surface.attach(buffer, 0, 0)
         state.wl_surface.damage_buffer(0, 0, width, height)
         state.wl_surface.commit()
+        logger.info(f"Committed buffer for output {output_name}")
 
     def perform_unlock(self):
         if self.session_lock is None:
@@ -404,7 +415,7 @@ def copy_image_to_argb8888(image, ptr):
     pixels = ctypes.cast(ptr, ctypes.POINTER(ctypes.c_uint32))
 
     for i, (r, g, b, a) in enumerate(image.getdata()):
-        pixels[i] = (a<<24) | (r<<16)| (g<<8) | b
+        pixels[i] = (a<<24) | (r<<16) | (g<<8) | b
 
 if __name__ == "__main__":
     try:
